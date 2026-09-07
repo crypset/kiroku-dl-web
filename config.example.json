@@ -1,0 +1,36 @@
+{
+  "app": {
+    "downloadDir": "downloads"
+  },
+  "download": {
+    "delay": 4000,
+    "pageDelay": 4000,
+    "searchDelay": 6000,
+    "maxConcurrent": 1,
+    "skipErrors": true,
+    "skipDownloaded": true,
+    "useDatabase": true,
+    "retries": 2,
+    "retryDelay": 2000
+  },
+  "database": {
+    "enabled": true
+  },
+  "searches": [
+    {
+      "name": "bepisdb-twintails",
+      "url": "https://db.bepis.moe/koikatsu?tags=twintails,blue_eyes&orderType=leastRecent",
+      "skipDownloaded": true,
+      "options": {
+        "maxPages": 2,
+        "verifyHash": true,
+        "countDownload": false
+      }
+    },
+    {
+      "name": "bepisdb-single-card",
+      "url": "https://db.bepis.moe/koikatsu/view/367885",
+      "skipDownloaded": true
+    }
+  ]
+}
