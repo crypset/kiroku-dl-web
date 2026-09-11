@@ -46,6 +46,10 @@ src/
     download-path.js                 buildItemPath()/metaPathFor() - downloads/<search>/<item> layout
     http.client.js                   axios client + getJson/postForm + validating downloadToFile()
     query.params.js                  parseSourceUrl()/pickParams() - URL and query-string handling
+tools/
+  config-editor/
+    config.editor.js                zero-dependency local server (`npm run config`)
+    config.editor.html              the editor page itself (single file, no CDN)
 ```
 
 ### Module contract
@@ -113,6 +117,31 @@ of truth for "already downloaded" - the orchestrator checks it before
 downloading and records a row after. File paths on disk are
 secondary/informational.
 
+### Config editor
+
+`npm run config` starts a local, dependency-free web UI for editing
+`config.json` at http://127.0.0.1:5174 (`--port N` / `--open` to open a
+browser; the port is also read from `KIROKU_CONFIG_EDITOR_PORT`). It is a
+tool around the config file, not a second source of truth:
+
+- it reads and writes the path `CONFIG_PATH` in `app.config.js` exports, and
+  shows `DEFAULTS` from the same file as placeholders, so no key list is
+  duplicated in the UI,
+- a save is validated by running the app's own `loadConfig()` against the
+  candidate first - the editor cannot write a config `npm start` would reject,
+- the previous file is copied to `data/config-backups/` (last 20 kept) on
+  every save,
+- `POST /api/resolve-url` asks the real `resolveModule()` whether a search URL
+  is handled by a module, which is what the per-search badge shows. Nothing is
+  fetched from the network.
+
+The server binds to `127.0.0.1` only and requires an `x-kiroku-editor` header
+on writes, so another page in the browser cannot drive it. Keys the form does
+not model (unknown top-level keys, unknown per-search keys) are preserved
+verbatim - adding a config key does not require touching the editor, though
+adding it to `GLOBAL_SECTIONS` / `OPTION_HINTS` in the HTML gives it a proper
+field.
+
 ## Conventions
 
 - ESM (`"type": "module"`) throughout, Node 22.
@@ -152,6 +181,9 @@ npm start                 # runs `node src/index.js` -> download command
 node src/index.js download
 node src/index.js backup:export
 node src/index.js backup:import [--clean|-c]
+
+npm run config             # config.json editor at http://127.0.0.1:5174
+npm run config -- --open   # ...and open it in a browser
 ```
 
 No test suite yet.

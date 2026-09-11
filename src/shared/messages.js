@@ -1,4 +1,4 @@
-const WELCOME_MESSAGE =
+export const WELCOME_MESSAGE =
   "\n\n" +
   " mm   mmm     ##                         mm                 \n" +
   ' ##  ##"      ""                         ##                 \n' +
@@ -10,10 +10,5 @@ const WELCOME_MESSAGE =
   "                                                 \n" +
   "                                                    \n";
 
-const SUB_TITLE =
+export const SUB_TITLE =
   "  Web Download Tool  \n" + "  by Seth The White\n";
-
-module.exports = {
-  WELCOME_MESSAGE,
-  SUB_TITLE
-};

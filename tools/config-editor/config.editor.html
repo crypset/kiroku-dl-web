@@ -1,0 +1,1292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kiroku - config editor</title>
+<style>
+  /* Palette follows the CLI's own (see shared/utils.js) so the tool feels like
+     part of the same program. */
+  :root {
+    --bg: #141414;
+    --bg-raised: #1c1c1c;
+    --bg-input: #111;
+    --line: #2e2e2e;
+    --line-strong: #3d3d3d;
+    --text: #f2f2f2;
+    --text-dim: #a6a6a6;
+    --text-faint: #6f6f6f;
+    --accent: #a7d6d6;
+    --accent-soft: #9cc4b2;
+    --amber: #cbbfa4;
+    --danger: #d05a5a;
+    --radius: 6px;
+    --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* --- Layout ------------------------------------------------------------ */
+
+  .topbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 18px;
+    background: var(--bg-raised);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand b { letter-spacing: 3px; font-weight: 600; }
+  .brand span { color: var(--text-faint); font-size: 12px; letter-spacing: 1px; }
+  .path {
+    flex: 1; min-width: 0;
+    font-family: var(--mono); font-size: 12px; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl;
+  }
+  .topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 18px;
+    padding: 18px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .side { position: sticky; top: 66px; display: flex; flex-direction: column; gap: 12px; }
+
+  .panel {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .panel > h2 {
+    margin: 0; padding: 10px 14px;
+    font-size: 12px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    cursor: pointer; user-select: none;
+  }
+  .panel > h2 .chev { color: var(--text-faint); transition: transform .15s; }
+  .panel.collapsed > h2 .chev { transform: rotate(-90deg); }
+  .panel.collapsed > .panel-body { display: none; }
+  .panel-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 12px; }
+
+  /* --- Fields ------------------------------------------------------------ */
+
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field > label { font-size: 12px; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+  .hint { font-size: 11px; color: var(--text-faint); }
+  .field.invalid input, .field.invalid textarea { border-color: var(--danger); }
+  .field .error { font-size: 11px; color: var(--danger); }
+
+  input[type="text"], input[type="number"], select, textarea {
+    width: 100%;
+    padding: 7px 9px;
+    background: var(--bg-input);
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    outline: none;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  input::placeholder, textarea::placeholder { color: var(--text-faint); }
+  textarea { font-family: var(--mono); font-size: 12.5px; resize: vertical; }
+  select { cursor: pointer; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 12px;
+    background: #232323;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: default; border-color: var(--line-strong); color: var(--text); }
+  .btn.primary { background: #26332f; border-color: var(--accent-soft); color: var(--accent-soft); }
+  .btn.primary:hover { background: #2e3f3a; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--text-dim); padding: 4px 7px; }
+  .btn.ghost:hover { background: #262626; color: var(--accent); }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); }
+  .btn.sm { padding: 4px 8px; font-size: 12px; }
+
+  /* --- Searches ---------------------------------------------------------- */
+
+  .toolbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 12px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    position: sticky; top: 66px; z-index: 10;
+  }
+  .toolbar .grow { flex: 1; min-width: 180px; }
+  .counter { font-size: 12px; color: var(--text-faint); font-family: var(--mono); }
+
+  .cards { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+
+  .card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+  }
+  .card.dragging { opacity: .4; }
+  .card.drop-before { box-shadow: 0 -2px 0 var(--accent); }
+  .card.drop-after { box-shadow: 0 2px 0 var(--accent); }
+
+  .card-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+  }
+  .card-head .idx {
+    font-family: var(--mono); font-size: 11px; color: var(--text-faint);
+    min-width: 26px; text-align: right;
+  }
+  .card-head .title { font-weight: 600; white-space: nowrap; }
+  .card-head .sub {
+    flex: 1; min-width: 0;
+    font-family: var(--mono); font-size: 11.5px; color: var(--text-faint);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .card-head .actions { display: flex; gap: 2px; }
+  .grip { color: var(--text-faint); cursor: grab; padding: 0 2px; }
+
+  .badge {
+    font-size: 10.5px; letter-spacing: .5px;
+    padding: 2px 6px; border-radius: 3px;
+    border: 1px solid var(--line-strong); color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .badge.ok { color: var(--accent-soft); border-color: #3b5049; }
+  .badge.warn { color: var(--amber); border-color: #4a4433; }
+  .badge.bad { color: var(--danger); border-color: #4d2b2b; }
+
+  .card-body { padding: 4px 12px 14px 12px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 700px) { .row2 { grid-template-columns: 1fr; } }
+
+  .opt-row { display: grid; grid-template-columns: minmax(120px, 1fr) 110px minmax(140px, 1.4fr) auto; gap: 6px; align-items: start; }
+  @media (max-width: 700px) { .opt-row { grid-template-columns: 1fr; } }
+  .opt-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .empty { padding: 28px; text-align: center; color: var(--text-faint); }
+
+  /* --- JSON view --------------------------------------------------------- */
+
+  #jsonView { padding: 18px; display: none; }
+  #jsonView.active { display: block; }
+  #jsonText { min-height: 62vh; }
+  .json-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .json-status { font-family: var(--mono); font-size: 12px; }
+  .json-status.ok { color: var(--accent-soft); }
+  .json-status.bad { color: var(--danger); }
+
+  /* --- Misc -------------------------------------------------------------- */
+
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-soft); display: inline-block; }
+  .dot.dirty { background: var(--amber); }
+  #dirtyPill { font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+
+  .toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+  .toast {
+    padding: 10px 14px; border-radius: 4px;
+    background: var(--bg-raised); border: 1px solid var(--line-strong);
+    max-width: 420px; font-size: 13px;
+    animation: slide .18s ease-out;
+  }
+  .toast.ok { border-color: var(--accent-soft); color: var(--accent-soft); }
+  .toast.bad { border-color: var(--danger); color: #f0b4b4; }
+  @keyframes slide { from { transform: translateY(8px); opacity: 0; } }
+
+  .banner {
+    margin: 0 18px; padding: 10px 14px;
+    border: 1px solid var(--amber); border-radius: var(--radius);
+    color: var(--amber); font-size: 13px; display: none;
+  }
+  .banner.show { display: block; }
+
+  kbd {
+    font-family: var(--mono); font-size: 11px;
+    border: 1px solid var(--line-strong); border-bottom-width: 2px;
+    border-radius: 3px; padding: 0 4px; color: var(--text-dim);
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><b>KIROKU</b><span>config editor</span></div>
+  <div class="path" id="configPath"></div>
+  <div id="dirtyPill"><i class="dot" id="dirtyDot"></i><span id="dirtyText">loading</span></div>
+  <div class="topbar-actions">
+    <button class="btn sm" id="viewToggle" title="Switch between the form and raw JSON">JSON view</button>
+    <button class="btn sm" id="importBtn" title="Load a config file from disk into the editor">Import</button>
+    <button class="btn sm" id="exportBtn" title="Download the current config as a file">Export</button>
+    <button class="btn sm" id="reloadBtn" title="Re-read config.json from disk">Reload</button>
+    <button class="btn sm primary" id="saveBtn" title="Save to config.json (Ctrl+S)">Save</button>
+  </div>
+</header>
+
+<div class="banner" id="banner"></div>
+
+<div class="layout" id="formView">
+  <aside class="side" id="side"></aside>
+
+  <section>
+    <div class="toolbar">
+      <input type="text" class="grow" id="filter" placeholder="Filter searches by name, URL or option&hellip;  (Ctrl+F)" />
+      <span class="counter" id="counter"></span>
+      <button class="btn sm" id="addBtn">+ Add search</button>
+      <button class="btn sm" id="expandAll">Expand all</button>
+      <button class="btn sm" id="collapseAll">Collapse all</button>
+      <select id="sortSelect" style="width:auto" title="Reorder the searches in the file">
+        <option value="">Sort&hellip;</option>
+        <option value="name">By name (A-Z)</option>
+        <option value="name-desc">By name (Z-A)</option>
+        <option value="url">By URL</option>
+        <option value="reverse">Reverse order</option>
+      </select>
+      <button class="btn sm" id="checkAll" title="Ask the engine which module handles each URL">Check URLs</button>
+    </div>
+
+    <div class="cards" id="cards"></div>
+    <div id="listFooter"></div>
+  </section>
+</div>
+
+<div id="jsonView">
+  <div class="json-bar">
+    <button class="btn sm" id="jsonFormat">Format</button>
+    <button class="btn sm" id="jsonApply">Apply to form</button>
+    <span class="json-status" id="jsonStatus"></span>
+  </div>
+  <textarea id="jsonText" spellcheck="false"></textarea>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<input type="file" id="filePicker" accept="application/json,.json" hidden />
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// Schema: what the form knows about config.json. Descriptions are UI hints
+// only - the engine's real defaults come from the server (app.config.js).
+// ---------------------------------------------------------------------------
+
+const GLOBAL_SECTIONS = [
+  {
+    key: "app",
+    title: "App",
+    fields: [
+      { key: "downloadDir", type: "text", label: "Download directory",
+        hint: "Root folder: <dir>/<search name>/<item>" },
+    ],
+  },
+  {
+    key: "download",
+    title: "Download",
+    fields: [
+      { key: "delay", type: "number", label: "Delay between items", unit: "ms" },
+      { key: "pageDelay", type: "number", label: "Delay between pages", unit: "ms" },
+      { key: "searchDelay", type: "number", label: "Delay between searches", unit: "ms" },
+      { key: "maxConcurrent", type: "number", label: "Concurrent downloads", min: 1 },
+      { key: "retries", type: "number", label: "Retries per page/item", min: 0 },
+      { key: "retryDelay", type: "number", label: "Delay before a retry", unit: "ms" },
+      { key: "skipErrors", type: "bool", label: "Skip errors",
+        hint: "Keep going when one item or source fails" },
+      { key: "skipDownloaded", type: "bool", label: "Skip already downloaded",
+        hint: "Checks the database before downloading" },
+      { key: "useDatabase", type: "bool", label: "Use the database" },
+    ],
+  },
+  {
+    key: "database",
+    title: "Database",
+    fields: [
+      { key: "enabled", type: "bool", label: "Enabled", hint: "SQLite in data/pot.sqlite" },
+    ],
+  },
+];
+
+// Per-search `options` keys the UI offers by name. Anything not listed here can
+// still be added as a custom key - modules read options freely.
+const OPTION_HINTS = [
+  { key: "maxPages", type: "number", label: "Stop after N pages" },
+  { key: "verifyHash", type: "bool", label: "Verify sha256 after download (bepisdb)" },
+  { key: "countDownload", type: "bool", label: "Count the download on the site (bepisdb)" },
+  { key: "userAgent", type: "string", label: "Custom User-Agent" },
+  { key: "timeout", type: "number", label: "HTTP timeout (ms)" },
+  { key: "headers", type: "json", label: "Extra HTTP headers (object)" },
+];
+
+const RENDER_STEP = 200; // cards drawn at once; large configs stay responsive
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+const state = {
+  path: "",
+  defaults: {},
+  sections: { app: {}, download: {}, database: {} },
+  extra: {},            // unknown top-level keys, preserved verbatim
+  rows: [],             // [{ uid, data, options: [{key, value}] }]
+  expanded: new Set(),
+  urlChecks: new Map(), // uid -> { matched, module, error }
+  filter: "",
+  rendered: RENDER_STEP,
+  dirty: false,
+  view: "form",
+};
+
+let uidSeq = 0;
+const nextUid = () => `s${++uidSeq}`;
+
+// ---------------------------------------------------------------------------
+// Tiny DOM helper - building nodes instead of strings keeps user values out of
+// the HTML parser entirely.
+// ---------------------------------------------------------------------------
+
+function h(tag, props = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(props)) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === "class") node.className = value;
+    else if (key === "dataset") Object.assign(node.dataset, value);
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else if (key in node) {
+      // Some IDL properties are read-only (input.list, for one) and assigning
+      // to them throws in a module's strict mode - fall back to the attribute.
+      try {
+        node[key] = value;
+      } catch {
+        node.setAttribute(key, value);
+      }
+    } else node.setAttribute(key, value);
+  }
+  for (const child of children.flat()) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child.nodeType ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+const $ = (id) => document.getElementById(id);
+
+/** replaceChildren() turns a null into the text "null" - drop them first. */
+function fill(node, ...children) {
+  node.replaceChildren(...children.flat().filter(Boolean));
+}
+
+function toast(message, kind = "") {
+  const node = h("div", { class: `toast ${kind}` }, message);
+  $("toasts").append(node);
+  setTimeout(() => node.remove(), kind === "bad" ? 7000 : 3500);
+}
+
+function debounce(fn, ms) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+function markDirty() {
+  state.dirty = true;
+  renderStatus();
+}
+
+// ---------------------------------------------------------------------------
+// API
+// ---------------------------------------------------------------------------
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { "content-type": "application/json", "x-kiroku-editor": "1", ...options.headers },
+  });
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(payload.error ?? `${res.status} ${res.statusText}`);
+  return payload;
+}
+
+// ---------------------------------------------------------------------------
+// Loading / serialising
+// ---------------------------------------------------------------------------
+
+function adoptConfig(config) {
+  const source = config && typeof config === "object" ? config : {};
+  const { app, download, database, searches, ...extra } = source;
+
+  state.sections = {
+    app: { ...(app ?? {}) },
+    download: { ...(download ?? {}) },
+    database: { ...(database ?? {}) },
+  };
+  state.extra = extra;
+  state.rows = (Array.isArray(searches) ? searches : []).map(toRow);
+  state.expanded.clear();
+  state.urlChecks.clear();
+  state.rendered = RENDER_STEP;
+}
+
+function toRow(search) {
+  const { options, ...data } = search && typeof search === "object" ? search : {};
+  return {
+    uid: nextUid(),
+    data,
+    options: Object.entries(options ?? {}).map(([key, value]) => ({ key, value })),
+  };
+}
+
+/** Builds the object that gets written to config.json. */
+function serialize() {
+  const out = {
+    app: { ...state.sections.app },
+    download: { ...state.sections.download },
+    database: { ...state.sections.database },
+    searches: state.rows.map(rowToSearch),
+  };
+  return { ...out, ...state.extra };
+}
+
+function rowToSearch(row) {
+  const search = { ...row.data };
+  const options = {};
+
+  for (const { key, value } of row.options) {
+    if (!key.trim()) continue;
+    options[key] = value;
+  }
+  if (Object.keys(options).length > 0) search.options = options;
+  else delete search.options;
+
+  return search;
+}
+
+async function load() {
+  const payload = await api("/api/config");
+  state.path = payload.path;
+  state.defaults = payload.defaults ?? {};
+
+  $("configPath").textContent = payload.path;
+  $("configPath").title = payload.path;
+
+  if (payload.error) {
+    // Broken file: hand the raw text to the JSON view rather than silently
+    // replacing what the user wrote.
+    adoptConfig(payload.defaults);
+    $("jsonText").value = payload.raw ?? "";
+    setView("json");
+    showBanner(`${payload.error} - fix the JSON below, then Apply to form.`);
+  } else if (!payload.exists) {
+    adoptConfig(payload.defaults);
+    showBanner("config.json does not exist yet - it will be created when you save.");
+  } else {
+    adoptConfig(payload.config);
+    showBanner("");
+  }
+
+  state.dirty = false;
+  renderAll();
+}
+
+function showBanner(text) {
+  const banner = $("banner");
+  banner.textContent = text;
+  banner.classList.toggle("show", Boolean(text));
+}
+
+async function save() {
+  const problems = validate();
+  if (problems.length > 0) {
+    toast(problems[0], "bad");
+    return;
+  }
+
+  try {
+    const result = await api("/api/config", {
+      method: "PUT",
+      body: JSON.stringify({ config: serialize() }),
+    });
+    state.dirty = false;
+    renderStatus();
+    toast(result.backup ? `Saved. Previous version kept in ${result.backup}` : "Saved.", "ok");
+    showBanner("");
+  } catch (err) {
+    toast(`Save rejected: ${err.message}`, "bad");
+  }
+}
+
+/** Client-side mirror of the engine's rules, so mistakes surface before saving. */
+function validate() {
+  const problems = [];
+  const seen = new Map();
+
+  state.rows.forEach((row, index) => {
+    const name = String(row.data.name ?? "").trim();
+    const url = String(row.data.url ?? "").trim();
+
+    if (!name) problems.push(`Search #${index + 1} has no name`);
+    if (!url) problems.push(`Search "${name || index + 1}" has no URL`);
+    if (name) {
+      if (seen.has(name)) problems.push(`Duplicate search name "${name}" (#${seen.get(name) + 1} and #${index + 1})`);
+      else seen.set(name, index);
+    }
+  });
+
+  return problems;
+}
+
+function duplicateNames() {
+  const counts = new Map();
+  for (const row of state.rows) {
+    const name = String(row.data.name ?? "").trim();
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return new Set([...counts].filter(([, count]) => count > 1).map(([name]) => name));
+}
+
+// ---------------------------------------------------------------------------
+// Global settings panel
+// ---------------------------------------------------------------------------
+
+function renderSide() {
+  const side = $("side");
+  fill(side, GLOBAL_SECTIONS.map(renderSection), renderShortcuts());
+}
+
+function renderSection(section) {
+  const body = h("div", { class: "panel-body" },
+    section.fields.map((field) => renderGlobalField(section.key, field)));
+
+  const panel = h("div", { class: "panel" },
+    h("h2", { onclick: () => panel.classList.toggle("collapsed") },
+      section.title, h("span", { class: "chev" }, "▾")),
+    body);
+
+  return panel;
+}
+
+function renderGlobalField(sectionKey, field) {
+  const store = state.sections[sectionKey];
+  const fallback = state.defaults?.[sectionKey]?.[field.key];
+  const current = store[field.key];
+
+  const label = h("label", {}, field.label,
+    field.unit ? h("span", { class: "hint" }, field.unit) : null);
+
+  const control = field.type === "bool"
+    ? h("select", {
+        value: current === undefined ? "" : String(current),
+        onchange: (event) => {
+          const value = event.target.value;
+          if (value === "") delete store[field.key];
+          else store[field.key] = value === "true";
+          markDirty();
+        },
+      },
+      h("option", { value: "" }, `default (${fallback})`),
+      h("option", { value: "true" }, "true"),
+      h("option", { value: "false" }, "false"))
+    : h("input", {
+        type: field.type === "number" ? "number" : "text",
+        min: field.min,
+        value: current === undefined ? "" : String(current),
+        placeholder: fallback === undefined ? "" : `default: ${fallback}`,
+        oninput: (event) => {
+          const raw = event.target.value.trim();
+          if (raw === "") delete store[field.key];
+          else store[field.key] = field.type === "number" ? Number(raw) : raw;
+          markDirty();
+        },
+      });
+
+  if (field.type === "bool" && current !== undefined) control.value = String(current);
+
+  return h("div", { class: "field" }, label, control,
+    field.hint ? h("span", { class: "hint" }, field.hint) : null);
+}
+
+function renderShortcuts() {
+  const body = h("div", { class: "panel-body", style: "gap:6px" },
+    h("div", { class: "hint" }, h("kbd", {}, "Ctrl"), " + ", h("kbd", {}, "S"), " save"),
+    h("div", { class: "hint" }, h("kbd", {}, "Ctrl"), " + ", h("kbd", {}, "F"), " filter searches"),
+    h("div", { class: "hint" }, h("kbd", {}, "Esc"), " clear the filter"),
+    h("div", { class: "hint" }, "Drag a card by its handle to reorder"),
+    h("div", { class: "hint" }, "Every save keeps a copy in data/config-backups/"));
+
+  const panel = h("div", { class: "panel" },
+    h("h2", { onclick: () => panel.classList.toggle("collapsed") },
+      "Shortcuts", h("span", { class: "chev" }, "▾")),
+    body);
+
+  return panel;
+}
+
+// ---------------------------------------------------------------------------
+// Search list
+// ---------------------------------------------------------------------------
+
+function matchesFilter(row) {
+  const needle = state.filter.trim().toLowerCase();
+  if (!needle) return true;
+
+  const haystack = [
+    row.data.name, row.data.url,
+    ...row.options.flatMap(({ key, value }) => [key, JSON.stringify(value)]),
+  ].join(" ").toLowerCase();
+
+  return haystack.includes(needle);
+}
+
+function renderList() {
+  const visible = state.rows.filter(matchesFilter);
+  const shown = visible.slice(0, state.rendered);
+
+  fill($("cards"),
+    shown.map((row) => renderCard(row, state.rows.indexOf(row))),
+    visible.length === 0
+      ? h("div", { class: "empty" },
+          state.rows.length === 0 ? "No searches yet - add one to get started." : "Nothing matches the filter.")
+      : null,
+  );
+
+  fill($("listFooter"),
+    visible.length > shown.length
+      ? h("button", {
+          class: "btn", style: "margin-top:10px",
+          onclick: () => { state.rendered += RENDER_STEP; renderList(); },
+        }, `Show ${Math.min(RENDER_STEP, visible.length - shown.length)} more of ${visible.length - shown.length}`)
+      : null,
+  );
+
+  renderCounter(visible.length);
+}
+
+function renderCounter(visibleCount) {
+  const duplicates = duplicateNames().size;
+  const parts = [`${state.rows.length} searches`];
+  if (visibleCount !== state.rows.length) parts.push(`${visibleCount} shown`);
+  if (duplicates > 0) parts.push(`${duplicates} duplicate name${duplicates > 1 ? "s" : ""}`);
+  $("counter").textContent = parts.join("  ·  ");
+}
+
+function renderCard(row, index) {
+  const expanded = state.expanded.has(row.uid);
+  const card = h("div", { class: "card", dataset: { uid: row.uid } });
+
+  card.append(renderCardHead(row, index, card));
+  if (expanded) card.append(renderCardBody(row, card));
+
+  wireDropTarget(card, row);
+  wireGrip(card, row);
+  return card;
+}
+
+function renderCardHead(row, index, card) {
+  const duplicates = duplicateNames();
+  const name = String(row.data.name ?? "").trim();
+  const check = state.urlChecks.get(row.uid);
+
+  const badges = [
+    row.options.length > 0 ? h("span", { class: "badge" }, `${row.options.length} option${row.options.length > 1 ? "s" : ""}`) : null,
+    row.data.skipDownloaded === false ? h("span", { class: "badge warn" }, "re-downloads") : null,
+    name && duplicates.has(name) ? h("span", { class: "badge bad" }, "duplicate name") : null,
+    check ? h("span", { class: `badge ${check.matched ? "ok" : "bad"}`, title: check.error ?? "" },
+      check.matched ? check.module.replace(/Downloader$/, "") : "no module") : null,
+  ];
+
+  return h("div", {
+    class: "card-head",
+    onclick: (event) => {
+      if (event.target.closest("button, .grip")) return;
+      toggleExpanded(row, card);
+    },
+  },
+    h("span", { class: "grip", draggable: true, title: "Drag to reorder" }, "☰"),
+    h("span", { class: "idx" }, `#${index + 1}`),
+    h("span", { class: "title" }, name || "(unnamed)"),
+    ...badges,
+    h("span", { class: "sub" }, row.data.url || "(no URL)"),
+    h("span", { class: "actions" },
+      h("button", { class: "btn ghost sm", title: "Move up", onclick: () => move(index, -1) }, "↑"),
+      h("button", { class: "btn ghost sm", title: "Move down", onclick: () => move(index, 1) }, "↓"),
+      h("button", { class: "btn ghost sm", title: "Duplicate", onclick: () => duplicate(index) }, "⧉"),
+      h("button", { class: "btn ghost sm danger", title: "Delete", onclick: () => remove(index) }, "✕")),
+  );
+}
+
+function toggleExpanded(row, card) {
+  if (state.expanded.has(row.uid)) {
+    state.expanded.delete(row.uid);
+    card.querySelector(".card-body")?.remove();
+    return;
+  }
+  // Bodies are built on demand: a config with hundreds of searches only ever
+  // pays for the cards actually opened.
+  state.expanded.add(row.uid);
+  card.append(renderCardBody(row, card));
+}
+
+function renderCardBody(row, card) {
+  const refreshHead = () => {
+    fill(card, renderCardHead(row, state.rows.indexOf(row), card), [...card.children].slice(1));
+    wireGrip(card, row); // the old handle went away with the old header
+  };
+
+  const nameField = textField({
+    label: "Name",
+    hint: "Also the key used for the already-downloaded check - keep it stable",
+    value: row.data.name ?? "",
+    oninput: (value) => {
+      row.data.name = value;
+      markDirty();
+      refreshHead();
+      renderCounter(state.rows.filter(matchesFilter).length);
+    },
+  });
+
+  const urlStatus = h("span", { class: "hint" }, "");
+  const urlField = textField({
+    label: "URL",
+    value: row.data.url ?? "",
+    oninput: (value) => {
+      row.data.url = value;
+      markDirty();
+      refreshHead();
+      debouncedCheck(row, urlStatus, refreshHead);
+    },
+  });
+  urlField.append(urlStatus);
+
+  // Opening a card is when its URL gets checked against the module registry -
+  // doing it for every search on load would be hundreds of pointless requests.
+  if (state.urlChecks.has(row.uid)) paintUrlStatus(urlStatus, state.urlChecks.get(row.uid));
+  else checkUrl(row, urlStatus, refreshHead);
+
+  const skipField = h("div", { class: "field" },
+    h("label", {}, "Skip already downloaded"),
+    h("select", {
+      onchange: (event) => {
+        const value = event.target.value;
+        if (value === "") delete row.data.skipDownloaded;
+        else row.data.skipDownloaded = value === "true";
+        markDirty();
+        refreshHead();
+      },
+    },
+      h("option", { value: "" }, "inherit from global setting"),
+      h("option", { value: "true" }, "true - skip"),
+      h("option", { value: "false" }, "false - always re-download")),
+    h("span", { class: "hint" }, "A search can only opt out; the global setting still has to be on."));
+
+  skipField.querySelector("select").value =
+    row.data.skipDownloaded === undefined ? "" : String(row.data.skipDownloaded);
+
+  return h("div", { class: "card-body" },
+    nameField,
+    urlField,
+    h("div", { class: "row2" }, skipField, renderUnknownKeys(row)),
+    renderOptions(row, refreshHead));
+}
+
+function textField({ label, hint, value, oninput }) {
+  return h("div", { class: "field" },
+    h("label", {}, label),
+    h("input", { type: "text", value, oninput: (event) => oninput(event.target.value) }),
+    hint ? h("span", { class: "hint" }, hint) : null);
+}
+
+/** Shows any per-search keys the form does not model, so nothing is invisible. */
+function renderUnknownKeys(row) {
+  const known = new Set(["name", "url", "skipDownloaded"]);
+  const extras = Object.keys(row.data).filter((key) => !known.has(key));
+  if (extras.length === 0) return h("div", {});
+
+  return h("div", { class: "field" },
+    h("label", {}, "Other keys (kept as-is)"),
+    h("span", { class: "hint" }, extras.join(", ")));
+}
+
+// --- Options ---------------------------------------------------------------
+
+function valueType(value) {
+  if (typeof value === "boolean") return "bool";
+  if (typeof value === "number") return "number";
+  if (typeof value === "string") return "string";
+  return "json";
+}
+
+function castValue(value, type) {
+  if (type === "bool") return Boolean(value);
+  if (type === "number") return Number.isFinite(Number(value)) ? Number(value) : 0;
+  if (type === "string") return typeof value === "object" ? JSON.stringify(value) : String(value ?? "");
+  return typeof value === "object" && value !== null ? value : {};
+}
+
+function renderOptions(row, refreshHead) {
+  const list = h("div", { class: "opt-list" });
+
+  const redraw = () => {
+    fill(list, row.options.map((entry, index) => renderOptionRow(row, entry, index, redraw, refreshHead)));
+    refreshHead();
+  };
+  redraw();
+
+  const picker = h("select", { style: "width:auto" },
+    h("option", { value: "" }, "+ add option…"),
+    ...OPTION_HINTS.map((hint) => h("option", { value: hint.key }, `${hint.key} - ${hint.label}`)),
+    h("option", { value: "__custom" }, "custom key…"));
+
+  picker.addEventListener("change", () => {
+    const choice = picker.value;
+    picker.value = "";
+    if (!choice) return;
+
+    if (choice === "__custom") {
+      row.options.push({ key: "", value: "" });
+    } else {
+      if (row.options.some((entry) => entry.key === choice)) {
+        toast(`"${choice}" is already set for this search`, "bad");
+        return;
+      }
+      const hint = OPTION_HINTS.find((item) => item.key === choice);
+      row.options.push({ key: choice, value: defaultForType(hint.type) });
+    }
+    markDirty();
+    redraw();
+  });
+
+  return h("div", { class: "field" },
+    h("label", {}, "Module options",
+      h("span", { class: "hint" }, "read by the module via this.option(key)")),
+    list,
+    h("div", {}, picker));
+}
+
+function defaultForType(type) {
+  if (type === "bool") return true;
+  if (type === "number") return 1;
+  if (type === "json") return {};
+  return "";
+}
+
+function renderOptionRow(row, entry, index, redraw, refreshHead) {
+  const type = valueType(entry.value);
+
+  const keyInput = h("input", {
+    type: "text", value: entry.key, placeholder: "key", list: "optionKeys",
+    oninput: (event) => { entry.key = event.target.value; markDirty(); },
+  });
+
+  const typeSelect = h("select", {
+    onchange: (event) => {
+      entry.value = castValue(entry.value, event.target.value);
+      markDirty();
+      redraw();
+    },
+  },
+    h("option", { value: "string" }, "string"),
+    h("option", { value: "number" }, "number"),
+    h("option", { value: "bool" }, "boolean"),
+    h("option", { value: "json" }, "json"));
+  typeSelect.value = type;
+
+  return h("div", { class: "opt-row" },
+    keyInput,
+    typeSelect,
+    renderOptionValue(entry, type),
+    h("button", {
+      class: "btn ghost sm danger", title: "Remove option",
+      onclick: () => { row.options.splice(index, 1); markDirty(); redraw(); refreshHead(); },
+    }, "✕"));
+}
+
+function renderOptionValue(entry, type) {
+  if (type === "bool") {
+    const select = h("select", {
+      onchange: (event) => { entry.value = event.target.value === "true"; markDirty(); },
+    }, h("option", { value: "true" }, "true"), h("option", { value: "false" }, "false"));
+    select.value = String(entry.value);
+    return select;
+  }
+
+  if (type === "number") {
+    return h("input", {
+      type: "number", value: String(entry.value),
+      oninput: (event) => {
+        const raw = event.target.value;
+        entry.value = raw === "" ? 0 : Number(raw);
+        markDirty();
+      },
+    });
+  }
+
+  if (type === "json") {
+    const field = h("div", { class: "field" });
+    const error = h("span", { class: "error" }, "");
+    const area = h("textarea", {
+      rows: 3, value: JSON.stringify(entry.value, null, 2),
+      oninput: (event) => {
+        try {
+          entry.value = JSON.parse(event.target.value);
+          field.classList.remove("invalid");
+          error.textContent = "";
+        } catch (err) {
+          field.classList.add("invalid");
+          error.textContent = err.message;
+        }
+        markDirty();
+      },
+    });
+    field.append(area, error);
+    return field;
+  }
+
+  return h("input", {
+    type: "text", value: String(entry.value ?? ""),
+    oninput: (event) => { entry.value = event.target.value; markDirty(); },
+  });
+}
+
+// --- URL checking ----------------------------------------------------------
+
+async function checkUrl(row, statusNode, refreshHead) {
+  const url = String(row.data.url ?? "").trim();
+  if (!url) return;
+
+  try {
+    const result = await api("/api/resolve-url", { method: "POST", body: JSON.stringify({ url }) });
+    state.urlChecks.set(row.uid, result);
+    paintUrlStatus(statusNode, result);
+    refreshHead?.();
+  } catch {
+    /* the editor still works without the check */
+  }
+}
+
+const debouncedCheck = debounce((row, statusNode, refreshHead) => checkUrl(row, statusNode, refreshHead), 500);
+
+function paintUrlStatus(node, check) {
+  if (!node) return;
+  if (!check) { node.textContent = ""; return; }
+  node.textContent = check.matched
+    ? `handled by ${check.module}`
+    : `no module: ${check.error}`;
+  node.style.color = check.matched ? "var(--accent-soft)" : "var(--danger)";
+}
+
+async function checkAllUrls() {
+  const button = $("checkAll");
+  button.disabled = true;
+
+  try {
+    // Sequential on purpose: it is local, cheap, and keeps the log readable.
+    for (const row of state.rows) await checkUrl(row);
+    const bad = state.rows.filter((row) => state.urlChecks.get(row.uid)?.matched === false).length;
+    toast(bad === 0 ? "Every URL is handled by a module." : `${bad} URL(s) have no matching module.`, bad === 0 ? "ok" : "bad");
+    renderList();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// --- List mutations --------------------------------------------------------
+
+function move(index, direction) {
+  const target = index + direction;
+  if (target < 0 || target >= state.rows.length) return;
+  [state.rows[index], state.rows[target]] = [state.rows[target], state.rows[index]];
+  markDirty();
+  renderList();
+}
+
+function duplicate(index) {
+  const row = state.rows[index];
+  const copy = toRow(rowToSearch(row));
+  copy.data.name = uniqueName(`${row.data.name ?? "search"}-copy`);
+  state.rows.splice(index + 1, 0, copy);
+  state.expanded.add(copy.uid);
+  markDirty();
+  renderList();
+}
+
+function remove(index) {
+  const row = state.rows[index];
+  if (!confirm(`Delete search "${row.data.name || index + 1}"?`)) return;
+  state.rows.splice(index, 1);
+  state.expanded.delete(row.uid);
+  markDirty();
+  renderList();
+}
+
+function addSearch() {
+  const row = toRow({ name: uniqueName("new-search"), url: "", skipDownloaded: true });
+  state.rows.unshift(row);
+  state.expanded.add(row.uid);
+  state.filter = "";
+  $("filter").value = "";
+  markDirty();
+  renderList();
+  document.querySelector(".card input")?.focus();
+}
+
+function uniqueName(base) {
+  const taken = new Set(state.rows.map((row) => row.data.name));
+  if (!taken.has(base)) return base;
+  let counter = 2;
+  while (taken.has(`${base}-${counter}`)) counter += 1;
+  return `${base}-${counter}`;
+}
+
+function sortRows(mode) {
+  const byName = (a, b) => String(a.data.name ?? "").localeCompare(String(b.data.name ?? ""));
+  if (mode === "name") state.rows.sort(byName);
+  else if (mode === "name-desc") state.rows.sort((a, b) => byName(b, a));
+  else if (mode === "url") state.rows.sort((a, b) => String(a.data.url ?? "").localeCompare(String(b.data.url ?? "")));
+  else if (mode === "reverse") state.rows.reverse();
+  markDirty();
+  renderList();
+}
+
+// --- Drag and drop ---------------------------------------------------------
+
+let dragUid = null;
+
+function wireGrip(card, row) {
+  const grip = card.querySelector(".grip");
+
+  grip.addEventListener("dragstart", (event) => {
+    if (state.filter.trim()) {
+      event.preventDefault();
+      toast("Clear the filter before reordering by drag", "bad");
+      return;
+    }
+    dragUid = row.uid;
+    card.classList.add("dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", row.uid);
+    event.dataTransfer.setDragImage(card, 20, 16);
+  });
+
+  grip.addEventListener("dragend", () => {
+    dragUid = null;
+    card.classList.remove("dragging");
+  });
+}
+
+function wireDropTarget(card, row) {
+  card.addEventListener("dragover", (event) => {
+    if (!dragUid || dragUid === row.uid) return;
+    event.preventDefault();
+    const box = card.getBoundingClientRect();
+    const after = event.clientY > box.top + box.height / 2;
+    card.classList.toggle("drop-after", after);
+    card.classList.toggle("drop-before", !after);
+  });
+
+  card.addEventListener("dragleave", () => card.classList.remove("drop-before", "drop-after"));
+
+  card.addEventListener("drop", (event) => {
+    event.preventDefault();
+    card.classList.remove("drop-before", "drop-after");
+    if (!dragUid || dragUid === row.uid) return;
+
+    const from = state.rows.findIndex((item) => item.uid === dragUid);
+    const [moved] = state.rows.splice(from, 1);
+    let to = state.rows.findIndex((item) => item.uid === row.uid);
+    const box = card.getBoundingClientRect();
+    if (event.clientY > box.top + box.height / 2) to += 1;
+
+    state.rows.splice(to, 0, moved);
+    markDirty();
+    renderList();
+  });
+}
+
+// ---------------------------------------------------------------------------
+// JSON view
+// ---------------------------------------------------------------------------
+
+function setView(view) {
+  state.view = view;
+  const isJson = view === "json";
+
+  $("jsonView").classList.toggle("active", isJson);
+  $("formView").style.display = isJson ? "none" : "grid";
+  $("viewToggle").textContent = isJson ? "Form view" : "JSON view";
+
+  if (isJson && !$("jsonText").value.trim()) {
+    $("jsonText").value = JSON.stringify(serialize(), null, 2);
+    validateJsonText();
+  }
+}
+
+function toJsonView() {
+  $("jsonText").value = JSON.stringify(serialize(), null, 2);
+  setView("json");
+  validateJsonText();
+}
+
+function validateJsonText() {
+  const status = $("jsonStatus");
+  try {
+    JSON.parse($("jsonText").value);
+    status.textContent = "valid JSON";
+    status.className = "json-status ok";
+    return true;
+  } catch (err) {
+    status.textContent = err.message;
+    status.className = "json-status bad";
+    return false;
+  }
+}
+
+function applyJson() {
+  if (!validateJsonText()) {
+    toast("Fix the JSON first", "bad");
+    return;
+  }
+  adoptConfig(JSON.parse($("jsonText").value));
+  markDirty();
+  renderAll();
+  setView("form");
+  showBanner("");
+  toast("Applied to the form - not saved yet", "ok");
+}
+
+// ---------------------------------------------------------------------------
+// Import / export
+// ---------------------------------------------------------------------------
+
+function exportFile() {
+  const blob = new Blob([`${JSON.stringify(serialize(), null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = h("a", { href: url, download: "config.json" });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      adoptConfig(JSON.parse(String(reader.result)));
+      markDirty();
+      renderAll();
+      toast(`Loaded ${file.name} - review it, then Save`, "ok");
+    } catch (err) {
+      toast(`Could not read ${file.name}: ${err.message}`, "bad");
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ---------------------------------------------------------------------------
+// Rendering entry points + wiring
+// ---------------------------------------------------------------------------
+
+function renderStatus() {
+  $("dirtyDot").classList.toggle("dirty", state.dirty);
+  $("dirtyText").textContent = state.dirty ? "unsaved changes" : "saved";
+  $("saveBtn").disabled = !state.dirty;
+}
+
+function renderAll() {
+  renderSide();
+  renderList();
+  renderStatus();
+}
+
+$("saveBtn").addEventListener("click", save);
+$("reloadBtn").addEventListener("click", async () => {
+  if (state.dirty && !confirm("Discard unsaved changes and re-read config.json?")) return;
+  $("jsonText").value = "";
+  await load();
+  toast("Reloaded from disk", "ok");
+});
+$("addBtn").addEventListener("click", addSearch);
+$("expandAll").addEventListener("click", () => {
+  state.rows.filter(matchesFilter).slice(0, state.rendered).forEach((row) => state.expanded.add(row.uid));
+  renderList();
+});
+$("collapseAll").addEventListener("click", () => { state.expanded.clear(); renderList(); });
+$("checkAll").addEventListener("click", checkAllUrls);
+$("sortSelect").addEventListener("change", (event) => {
+  if (event.target.value) sortRows(event.target.value);
+  event.target.value = "";
+});
+$("filter").addEventListener("input", debounce((event) => {
+  state.filter = event.target.value;
+  state.rendered = RENDER_STEP;
+  renderList();
+}, 120));
+
+$("viewToggle").addEventListener("click", () => (state.view === "json" ? applyJson() : toJsonView()));
+$("jsonFormat").addEventListener("click", () => {
+  if (!validateJsonText()) return;
+  $("jsonText").value = JSON.stringify(JSON.parse($("jsonText").value), null, 2);
+});
+$("jsonApply").addEventListener("click", applyJson);
+$("jsonText").addEventListener("input", debounce(validateJsonText, 200));
+
+$("exportBtn").addEventListener("click", exportFile);
+$("importBtn").addEventListener("click", () => $("filePicker").click());
+$("filePicker").addEventListener("change", (event) => {
+  const [file] = event.target.files;
+  if (file) importFile(file);
+  event.target.value = "";
+});
+
+document.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    if (state.view === "json") applyJson();
+    save();
+    return;
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    $("filter").focus();
+    $("filter").select();
+    return;
+  }
+  if (event.key === "Escape" && document.activeElement === $("filter")) {
+    $("filter").value = "";
+    state.filter = "";
+    renderList();
+  }
+});
+
+window.addEventListener("beforeunload", (event) => {
+  if (!state.dirty) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
+
+document.body.append(h("datalist", { id: "optionKeys" },
+  ...OPTION_HINTS.map((hint) => h("option", { value: hint.key }))));
+
+load().catch((err) => {
+  showBanner(`Could not load the config: ${err.message}`);
+  toast(err.message, "bad");
+});
+</script>
+</body>
+</html>

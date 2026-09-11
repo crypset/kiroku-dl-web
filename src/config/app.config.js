@@ -1,7 +1,10 @@
 import { readFile } from "fs/promises";
 import { resolve } from "path";
 
-const CONFIG_PATH = resolve(process.cwd(), "config.json");
+// The one place config.json's location is decided. Tools that need to read or
+// write the file (see tools/config-editor/) import this instead of building
+// their own path.
+export const CONFIG_PATH = resolve(process.cwd(), "config.json");
 
 // Fixed runtime paths, not user-configurable via config.json - kept here so
 // every other module reads them from this single source instead of
@@ -9,7 +12,11 @@ const CONFIG_PATH = resolve(process.cwd(), "config.json");
 export const DATA_DIR = resolve(process.cwd(), "data");
 export const DEFAULT_DB_STORAGE = resolve(DATA_DIR, "pot.sqlite");
 
-const DEFAULTS = {
+/**
+ * Values used for every key config.json leaves out. Exported so the config
+ * editor can show them as placeholders instead of keeping its own copy.
+ */
+export const DEFAULTS = {
   app: {
     downloadDir: "downloads",
   },
