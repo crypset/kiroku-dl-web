@@ -103,7 +103,7 @@ module extends it and implements:
 | `downloadItem(item)` | yes | Save one item to disk, return the file path |
 | `getItemId(item)` | no | Stable id for the skip-downloaded check (default: `item.id ?? item.url`) |
 | `hasNextPage(pageData, items)` | no | Whether to fetch another page (default: stop on an empty page) |
-| `resolveItemPath(item, ext)` | provided | Returns the standard `downloads/<search>/<item>` path — use it or build your own, the orchestrator only cares about the returned `filePath` |
+| `resolveItemPath(item, ext)` | provided | Returns the standard `downloads/[<group>/]<search>/<item>` path, group included when the search has one — use it or build your own, the orchestrator only cares about the returned `filePath` |
 
 `parseItems()` may put anything source-specific on an item's `metadata`
 field; the orchestrator writes it into that item's `.meta.json` sidecar.
@@ -236,8 +236,19 @@ downloads/<searchName>/<sanitized item name>_<timestamp>.<ext>
 downloads/<searchName>/<sanitized item name>_<timestamp>.meta.json
 ```
 
+and, for a search that sets the optional `group` key:
+
+```
+downloads/<group>/<searchName>/<sanitized item name>_<timestamp>.<ext>
+downloads/<group>/<searchName>/<sanitized item name>_<timestamp>.meta.json
+```
+
 Grouped by search, not by date — everything from one source stays
-together no matter when it was downloaded. The `<timestamp>` suffix
+together no matter when it was downloaded. A `group` adds exactly one
+folder above that (`sanitizeName()` strips separators, so it cannot add
+more levels or escape the download directory) and is the only thing it
+changes: the already-downloaded check is keyed on `searchName` + `itemId`,
+so grouping an existing search re-downloads nothing. The `<timestamp>` suffix
 (filesystem-safe, e.g. `2015-03-25_12-00-00` — see `formatTimestamp` in
 `src/shared/download-path.js`) is what keeps two items with the same title
 (re-uploads, identically-named episodes across seasons, etc.) from

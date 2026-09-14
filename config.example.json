@@ -20,6 +20,7 @@
     {
       "name": "bepisdb-twintails",
       "url": "https://db.bepis.moe/koikatsu?tags=twintails,blue_eyes&orderType=leastRecent",
+      "group": "koikatsu",
       "skipDownloaded": true,
       "options": {
         "maxPages": 2,
@@ -30,6 +31,12 @@
     {
       "name": "bepisdb-single-card",
       "url": "https://db.bepis.moe/koikatsu/view/367885",
+      "group": "koikatsu",
+      "skipDownloaded": true
+    },
+    {
+      "name": "bepisdb-ungrouped",
+      "url": "https://db.bepis.moe/kkscenes?orderType=mostRecent",
       "skipDownloaded": true
     }
   ]

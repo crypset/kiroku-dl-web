@@ -13,7 +13,7 @@
 //   this.getJson(url, params)    GET + JSON, throws on any non-200
 //   this.postForm(url, fields)   POST multipart/form-data + JSON
 //   this.downloadToFile(...)     stream to disk, validated (see below)
-//   this.resolveItemPath(...)    downloads/<search>/<item>_<timestamp>.<ext>
+//   this.resolveItemPath(...)    downloads/[<group>/]<search>/<item>_<timestamp>.<ext>
 //   this.option(key, fallback)   per-search settings from searches[].options
 //   this.hasNextPageByTotal(...) pagination when the API reports a total
 //

@@ -193,6 +193,7 @@ export class DownloadOrchestrator {
 
     await saveToJson(metaPathFor(filePath), {
       searchName: searchConfig.name,
+      group: searchConfig.group ?? null,
       itemId,
       title: item.title ?? null,
       url: item.url ?? null,

@@ -79,6 +79,16 @@ function validateConfig(config) {
         `Each entry in config.searches needs a "name" and a "url": ${JSON.stringify(search)}`,
       );
     }
+
+    // `group` is optional, but a present-and-empty one would silently become a
+    // folder named "Unknown" on disk - say so instead.
+    if (search.group !== undefined) {
+      if (typeof search.group !== "string" || !search.group.trim()) {
+        throw new Error(
+          `The "group" of search "${search.name}" must be a non-empty string when set`,
+        );
+      }
+    }
   }
 }
 

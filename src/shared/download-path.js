@@ -21,12 +21,21 @@ function formatTimestamp(date) {
  *   downloads/<searchName>/<sanitized item name>_<timestamp>.<ext>
  *   downloads/<searchName>/<sanitized item name>_<timestamp>.meta.json
  *
- * The search name is the primary axis, so everything from one source/series
- * ends up together regardless of when it was downloaded. The timestamp
- * suffix is what keeps two items with the same title (e.g. re-uploads,
- * identically named episodes across seasons) from overwriting each other.
+ * and, when the search declares a `group`, one level deeper:
+ *   downloads/<group>/<searchName>/<sanitized item name>_<timestamp>.<ext>
  *
- * @param {{ downloadDir: string, searchName: string, itemName: string, extension: string, timestamp?: Date }} opts
+ * The search name is the primary axis, so everything from one source/series
+ * ends up together regardless of when it was downloaded; the group is an
+ * optional shelf above it for keeping related searches side by side. The
+ * timestamp suffix is what keeps two items with the same title (e.g.
+ * re-uploads, identically named episodes across seasons) from overwriting
+ * each other.
+ *
+ * A group only changes where files land - the already-downloaded check is
+ * keyed on the search name, so moving a search into a group does not make
+ * Kiroku fetch everything again.
+ *
+ * @param {{ downloadDir: string, searchName: string, itemName: string, extension: string, group?: string, timestamp?: Date }} opts
  * @returns {{ dir: string, filePath: string, metaPath: string }}
  */
 export function buildItemPath({
@@ -34,9 +43,13 @@ export function buildItemPath({
   searchName,
   itemName,
   extension,
+  group,
   timestamp = new Date(),
 }) {
-  const dir = path.join(downloadDir, sanitizeName(searchName));
+  // sanitizeName() strips separators, so a group can only ever add one level -
+  // a value like "../elsewhere" cannot escape the download directory.
+  const groupSegment = typeof group === "string" && group.trim() ? [sanitizeName(group)] : [];
+  const dir = path.join(downloadDir, ...groupSegment, sanitizeName(searchName));
   const base = sanitizeName(`${itemName}_${formatTimestamp(timestamp)}`);
   const ext = extension.startsWith(".") ? extension : `.${extension}`;
 

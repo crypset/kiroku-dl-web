@@ -184,6 +184,26 @@
 
   .empty { padding: 28px; text-align: center; color: var(--text-faint); }
 
+  /* --- Groups ------------------------------------------------------------ */
+
+  .group-section { display: flex; flex-direction: column; gap: 8px; }
+  .group-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; margin-top: 6px;
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    background: #191919;
+    cursor: pointer; user-select: none;
+  }
+  .group-head.ungrouped { border-left-color: var(--line-strong); }
+  .group-head.drop-into { border-color: var(--accent); background: #20302e; }
+  .group-head .chev { color: var(--text-faint); width: 12px; }
+  .group-head .group-name { font-weight: 600; letter-spacing: .5px; }
+  .group-head .actions { margin-left: auto; display: flex; gap: 2px; }
+  .group-section .card { margin-left: 18px; }
+
+  .badge.group { color: var(--accent); border-color: #34494a; }
+
   /* --- JSON view --------------------------------------------------------- */
 
   #jsonView { padding: 18px; display: none; }
@@ -252,10 +272,12 @@
       <button class="btn sm" id="addBtn">+ Add search</button>
       <button class="btn sm" id="expandAll">Expand all</button>
       <button class="btn sm" id="collapseAll">Collapse all</button>
+      <button class="btn sm" id="groupToggle" title="Show searches under their group, or as one flat list">Grouped</button>
       <select id="sortSelect" style="width:auto" title="Reorder the searches in the file">
         <option value="">Sort&hellip;</option>
         <option value="name">By name (A-Z)</option>
         <option value="name-desc">By name (Z-A)</option>
+        <option value="group">By group, then name</option>
         <option value="url">By URL</option>
         <option value="reverse">Reverse order</option>
       </select>
@@ -344,6 +366,8 @@ const state = {
   extra: {},            // unknown top-level keys, preserved verbatim
   rows: [],             // [{ uid, data, options: [{key, value}] }]
   expanded: new Set(),
+  collapsedGroups: new Set(),
+  groupView: true,
   urlChecks: new Map(), // uid -> { matched, module, error }
   filter: "",
   rendered: RENDER_STEP,
@@ -439,6 +463,7 @@ function adoptConfig(config) {
   state.extra = extra;
   state.rows = (Array.isArray(searches) ? searches : []).map(toRow);
   state.expanded.clear();
+  state.collapsedGroups.clear();
   state.urlChecks.clear();
   state.rendered = RENDER_STEP;
 }
@@ -627,6 +652,7 @@ function renderShortcuts() {
     h("div", { class: "hint" }, h("kbd", {}, "Ctrl"), " + ", h("kbd", {}, "F"), " filter searches"),
     h("div", { class: "hint" }, h("kbd", {}, "Esc"), " clear the filter"),
     h("div", { class: "hint" }, "Drag a card by its handle to reorder"),
+    h("div", { class: "hint" }, "Drop a card on a group header to move it there"),
     h("div", { class: "hint" }, "Every save keeps a copy in data/config-backups/"));
 
   const panel = h("div", { class: "panel" },
@@ -646,19 +672,40 @@ function matchesFilter(row) {
   if (!needle) return true;
 
   const haystack = [
-    row.data.name, row.data.url,
+    row.data.name, row.data.url, row.data.group,
     ...row.options.flatMap(({ key, value }) => [key, JSON.stringify(value)]),
   ].join(" ").toLowerCase();
 
   return haystack.includes(needle);
 }
 
+/** The group a search belongs to, or null - blank and missing mean the same. */
+function groupOf(row) {
+  const group = row.data.group;
+  return typeof group === "string" && group.trim() ? group.trim() : null;
+}
+
+/** Group names in config order, first appearance wins. */
+function groupNames() {
+  const names = [];
+  for (const row of state.rows) {
+    const group = groupOf(row);
+    if (group && !names.includes(group)) names.push(group);
+  }
+  return names;
+}
+
 function renderList() {
   const visible = state.rows.filter(matchesFilter);
-  const shown = visible.slice(0, state.rendered);
+  refreshGroupOptions();
+
+  // One budget for the whole draw, so the card cap still holds once sections
+  // are in play. Cards inside a collapsed group are never built at all.
+  const budget = { left: state.rendered, skipped: 0 };
+  const grouped = state.groupView && state.rows.some(groupOf);
 
   fill($("cards"),
-    shown.map((row) => renderCard(row, state.rows.indexOf(row))),
+    grouped ? renderGroupSections(visible, budget) : renderCards(visible, budget),
     visible.length === 0
       ? h("div", { class: "empty" },
           state.rows.length === 0 ? "No searches yet - add one to get started." : "Nothing matches the filter.")
@@ -666,23 +713,101 @@ function renderList() {
   );
 
   fill($("listFooter"),
-    visible.length > shown.length
+    budget.skipped > 0
       ? h("button", {
           class: "btn", style: "margin-top:10px",
           onclick: () => { state.rendered += RENDER_STEP; renderList(); },
-        }, `Show ${Math.min(RENDER_STEP, visible.length - shown.length)} more of ${visible.length - shown.length}`)
+        }, `Show ${Math.min(RENDER_STEP, budget.skipped)} more of ${budget.skipped}`)
       : null,
   );
 
+  $("groupToggle").textContent = state.groupView ? "Grouped" : "Flat";
   renderCounter(visible.length);
+}
+
+function renderCards(rows, budget) {
+  const cards = [];
+  for (const row of rows) {
+    if (budget.left <= 0) {
+      budget.skipped += 1;
+      continue;
+    }
+    budget.left -= 1;
+    cards.push(renderCard(row, state.rows.indexOf(row)));
+  }
+  return cards;
+}
+
+function renderGroupSections(rows, budget) {
+  const sections = new Map();
+  for (const row of rows) {
+    const label = groupOf(row) ?? UNGROUPED;
+    if (!sections.has(label)) sections.set(label, []);
+    sections.get(label).push(row);
+  }
+
+  // Ungrouped searches sit at the bottom, under their own header.
+  const ordered = [...sections.entries()].sort(
+    (a, b) => (a[0] === UNGROUPED ? 1 : 0) - (b[0] === UNGROUPED ? 1 : 0),
+  );
+
+  return ordered.map(([label, groupRows]) => {
+    const collapsed = state.collapsedGroups.has(label);
+    const section = h("div", { class: "group-section" },
+      renderGroupHead(label, groupRows, collapsed));
+
+    if (!collapsed) section.append(...renderCards(groupRows, budget));
+    return section;
+  });
+}
+
+function renderGroupHead(label, rows, collapsed) {
+  const ungrouped = label === UNGROUPED;
+
+  const head = h("div", {
+    class: `group-head${ungrouped ? " ungrouped" : ""}`,
+    title: "Click to collapse; drop a search here to move it into this group",
+    onclick: (event) => {
+      if (event.target.closest("button")) return;
+      if (collapsed) state.collapsedGroups.delete(label);
+      else state.collapsedGroups.add(label);
+      renderList();
+    },
+  },
+    h("span", { class: "chev" }, collapsed ? "▸" : "▾"),
+    h("span", { class: "group-name" }, ungrouped ? "Ungrouped" : label),
+    h("span", { class: "counter" }, `${rows.length}`),
+    h("span", { class: "hint" },
+      ungrouped ? "downloads/<search name>/" : `downloads/${label}/<search name>/`),
+    ungrouped ? null : h("span", { class: "actions" },
+      h("button", {
+        class: "btn ghost sm", title: "Rename this group on every search in it",
+        onclick: () => renameGroup(label),
+      }, "✎"),
+      h("button", {
+        class: "btn ghost sm danger", title: "Remove this group from its searches",
+        onclick: () => dissolveGroup(label),
+      }, "⊘")),
+  );
+
+  wireGroupDropTarget(head, label);
+  return head;
 }
 
 function renderCounter(visibleCount) {
   const duplicates = duplicateNames().size;
+  const groups = groupNames().length;
+
   const parts = [`${state.rows.length} searches`];
+  if (groups > 0) parts.push(`${groups} group${groups > 1 ? "s" : ""}`);
   if (visibleCount !== state.rows.length) parts.push(`${visibleCount} shown`);
   if (duplicates > 0) parts.push(`${duplicates} duplicate name${duplicates > 1 ? "s" : ""}`);
   $("counter").textContent = parts.join("  ·  ");
+}
+
+/** Keeps the group input's suggestion list in step with the config. */
+function refreshGroupOptions() {
+  fill($("groupNames"), groupNames().map((name) => h("option", { value: name })));
 }
 
 function renderCard(row, index) {
@@ -702,7 +827,10 @@ function renderCardHead(row, index, card) {
   const name = String(row.data.name ?? "").trim();
   const check = state.urlChecks.get(row.uid);
 
+  const group = groupOf(row);
+
   const badges = [
+    group ? h("span", { class: "badge group", title: `downloads/${group}/${name}/` }, group) : null,
     row.options.length > 0 ? h("span", { class: "badge" }, `${row.options.length} option${row.options.length > 1 ? "s" : ""}`) : null,
     row.data.skipDownloaded === false ? h("span", { class: "badge warn" }, "re-downloads") : null,
     name && duplicates.has(name) ? h("span", { class: "badge bad" }, "duplicate name") : null,
@@ -743,8 +871,11 @@ function toggleExpanded(row, card) {
 }
 
 function renderCardBody(row, card) {
+  // Swaps the header alone. Rebuilding the whole card here would detach the
+  // body along with it, and detaching the field being typed in drops focus -
+  // which is exactly what happens on every keystroke in the name/URL inputs.
   const refreshHead = () => {
-    fill(card, renderCardHead(row, state.rows.indexOf(row), card), [...card.children].slice(1));
+    card.querySelector(".card-head").replaceWith(renderCardHead(row, state.rows.indexOf(row), card));
     wireGrip(card, row); // the old handle went away with the old header
   };
 
@@ -778,6 +909,23 @@ function renderCardBody(row, card) {
   if (state.urlChecks.has(row.uid)) paintUrlStatus(urlStatus, state.urlChecks.get(row.uid));
   else checkUrl(row, urlStatus, refreshHead);
 
+  // Typing re-renders only the header badge; the list is re-sectioned on
+  // change (blur or Enter), because moving the card the user is typing into
+  // another section mid-keystroke would take the focus with it.
+  const groupField = textField({
+    label: "Group",
+    hint: "Optional. Files go to downloads/<group>/<search name>/",
+    value: row.data.group ?? "",
+    oninput: (value) => {
+      if (value.trim()) row.data.group = value;
+      else delete row.data.group;
+      markDirty();
+      refreshHead();
+    },
+    onchange: () => renderList(),
+  });
+  groupField.querySelector("input").setAttribute("list", "groupNames");
+
   const skipField = h("div", { class: "field" },
     h("label", {}, "Skip already downloaded"),
     h("select", {
@@ -800,20 +948,25 @@ function renderCardBody(row, card) {
   return h("div", { class: "card-body" },
     nameField,
     urlField,
-    h("div", { class: "row2" }, skipField, renderUnknownKeys(row)),
+    h("div", { class: "row2" }, groupField, skipField),
+    renderUnknownKeys(row),
     renderOptions(row, refreshHead));
 }
 
-function textField({ label, hint, value, oninput }) {
+function textField({ label, hint, value, oninput, onchange }) {
   return h("div", { class: "field" },
     h("label", {}, label),
-    h("input", { type: "text", value, oninput: (event) => oninput(event.target.value) }),
+    h("input", {
+      type: "text", value,
+      oninput: (event) => oninput(event.target.value),
+      onchange: onchange ? (event) => onchange(event.target.value) : null,
+    }),
     hint ? h("span", { class: "hint" }, hint) : null);
 }
 
 /** Shows any per-search keys the form does not model, so nothing is invisible. */
 function renderUnknownKeys(row) {
-  const known = new Set(["name", "url", "skipDownloaded"]);
+  const known = new Set(["name", "url", "group", "skipDownloaded"]);
   const extras = Object.keys(row.data).filter((key) => !known.has(key));
   if (extras.length === 0) return h("div", {});
 
@@ -1053,10 +1206,83 @@ function uniqueName(base) {
   return `${base}-${counter}`;
 }
 
+function renameGroup(label) {
+  const next = prompt(`Rename the group "${label}" - this updates every search in it:`, label);
+  if (next === null) return;
+
+  const name = next.trim();
+  if (!name) {
+    toast("A group name cannot be empty - use ⊘ to remove the group instead", "bad");
+    return;
+  }
+  if (name === label) return;
+
+  let moved = 0;
+  for (const row of state.rows) {
+    if (groupOf(row) === label) {
+      row.data.group = name;
+      moved += 1;
+    }
+  }
+
+  if (state.collapsedGroups.delete(label)) state.collapsedGroups.add(name);
+  markDirty();
+  renderList();
+  toast(`Moved ${moved} search(es) into "${name}"`, "ok");
+}
+
+function dissolveGroup(label) {
+  const members = state.rows.filter((row) => groupOf(row) === label);
+  if (!confirm(`Remove the group "${label}" from ${members.length} search(es)? Their files go back to downloads/<search name>/.`)) return;
+
+  for (const row of members) delete row.data.group;
+  state.collapsedGroups.delete(label);
+  markDirty();
+  renderList();
+}
+
+/**
+ * Dropping a search on a group header moves it there - and puts it after that
+ * group's last member in the file, so the run order matches what is on screen.
+ */
+function moveIntoGroup(uid, label) {
+  const from = state.rows.findIndex((row) => row.uid === uid);
+  if (from === -1) return;
+
+  const [moved] = state.rows.splice(from, 1);
+  if (label === UNGROUPED) delete moved.data.group;
+  else moved.data.group = label;
+
+  let insertAt = state.rows.length;
+  for (let index = state.rows.length - 1; index >= 0; index -= 1) {
+    if ((groupOf(state.rows[index]) ?? UNGROUPED) === label) {
+      insertAt = index + 1;
+      break;
+    }
+  }
+
+  state.rows.splice(insertAt, 0, moved);
+  markDirty();
+  renderList();
+}
+
 function sortRows(mode) {
   const byName = (a, b) => String(a.data.name ?? "").localeCompare(String(b.data.name ?? ""));
   if (mode === "name") state.rows.sort(byName);
   else if (mode === "name-desc") state.rows.sort((a, b) => byName(b, a));
+  else if (mode === "group") {
+    // Ungrouped searches last, everything else by group then by name.
+    state.rows.sort((a, b) => {
+      const ga = groupOf(a);
+      const gb = groupOf(b);
+      if (ga !== gb) {
+        if (!ga) return 1;
+        if (!gb) return -1;
+        return ga.localeCompare(gb);
+      }
+      return byName(a, b);
+    });
+  }
   else if (mode === "url") state.rows.sort((a, b) => String(a.data.url ?? "").localeCompare(String(b.data.url ?? "")));
   else if (mode === "reverse") state.rows.reverse();
   markDirty();
@@ -1066,6 +1292,26 @@ function sortRows(mode) {
 // --- Drag and drop ---------------------------------------------------------
 
 let dragUid = null;
+
+/** Stands in for "no group" as a section label and Map key. A symbol can
+ * never collide with a group name the user typed. */
+const UNGROUPED = Symbol("ungrouped");
+
+function wireGroupDropTarget(head, label) {
+  head.addEventListener("dragover", (event) => {
+    if (!dragUid) return;
+    event.preventDefault();
+    head.classList.add("drop-into");
+  });
+
+  head.addEventListener("dragleave", () => head.classList.remove("drop-into"));
+
+  head.addEventListener("drop", (event) => {
+    event.preventDefault();
+    head.classList.remove("drop-into");
+    if (dragUid) moveIntoGroup(dragUid, label);
+  });
+}
 
 function wireGrip(card, row) {
   const grip = card.querySelector(".grip");
@@ -1228,6 +1474,10 @@ $("expandAll").addEventListener("click", () => {
 });
 $("collapseAll").addEventListener("click", () => { state.expanded.clear(); renderList(); });
 $("checkAll").addEventListener("click", checkAllUrls);
+$("groupToggle").addEventListener("click", () => {
+  state.groupView = !state.groupView;
+  renderList();
+});
 $("sortSelect").addEventListener("change", (event) => {
   if (event.target.value) sortRows(event.target.value);
   event.target.value = "";
@@ -1280,8 +1530,10 @@ window.addEventListener("beforeunload", (event) => {
   event.returnValue = "";
 });
 
-document.body.append(h("datalist", { id: "optionKeys" },
-  ...OPTION_HINTS.map((hint) => h("option", { value: hint.key }))));
+document.body.append(
+  h("datalist", { id: "optionKeys" }, ...OPTION_HINTS.map((hint) => h("option", { value: hint.key }))),
+  h("datalist", { id: "groupNames" }),
+);
 
 load().catch((err) => {
   showBanner(`Could not load the config: ${err.message}`);

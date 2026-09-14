@@ -100,13 +100,24 @@ import side effect via `registerModule()`).
 ### Downloads layout
 
 `downloads/<searchName>/<sanitized item name>_<timestamp>.<ext>` plus a
-sidecar `<same basename>.meta.json` (title, url, itemId, searchName,
+sidecar `<same basename>.meta.json` (title, url, itemId, searchName, group,
 downloadedAt), written automatically by the orchestrator after every
 successful download. The search name is the primary axis so everything
 from one source stays together; the timestamp suffix (filesystem-safe,
 e.g. `2015-03-25_12-00-00`, see `formatTimestamp` in
 `shared/download-path.js`) is what stops two items with the same title
 from overwriting each other on disk.
+
+A search may set an optional `group`, which adds one folder above the
+search name: `downloads/<group>/<searchName>/...`. `buildItemPath()` in
+`shared/download-path.js` is the only place that decides this - modules get
+it for free through `resolveItemPath()` and must not join paths themselves.
+`sanitizeName()` strips separators, so a group can only ever add a single
+level and cannot escape the download directory.
+
+A group is a disk-layout concern only: the already-downloaded check is keyed
+on `searchName` + `itemId`, so moving a search into a group (or renaming the
+group) does not make Kiroku re-fetch anything. Renaming the *search* does.
 
 ### Database
 
@@ -135,6 +146,13 @@ tool around the config file, not a second source of truth:
   is handled by a module, which is what the per-search badge shows. Nothing is
   fetched from the network.
 
+Groups have first-class support in the UI: searches are drawn under collapsible
+group headers (a collapsed group builds no cards at all), a search can be moved
+between groups by dropping its card on a header, and a group can be renamed or
+dissolved across every search in it at once. Typing in the name/URL/group inputs
+only re-renders the card header - re-rendering the list under a focused input
+would take the focus with it, which is a bug worth not reintroducing.
+
 The server binds to `127.0.0.1` only and requires an `x-kiroku-editor` header
 on writes, so another page in the browser cannot drive it. Keys the form does
 not model (unknown top-level keys, unknown per-search keys) are preserved
@@ -155,7 +173,7 @@ field.
   `config.example.json` in sync with any new config keys you introduce.
 - Module-specific per-search settings go under `searches[].options` and are
   read with `this.option(key, fallback)`; the generic keys (`name`, `url`,
-  `skipDownloaded`) stay at the top level.
+  `group`, `skipDownloaded`) stay at the top level.
 - Anything a module puts on an item's `metadata` field lands in that item's
   `.meta.json` sidecar - one file per download, no second sidecar.
 - This project is not anime-specific - avoid anime-flavored naming in

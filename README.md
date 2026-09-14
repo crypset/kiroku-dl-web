@@ -17,6 +17,34 @@ Downloads land in `downloads/<search name>/`, each file next to a
 `.meta.json` sidecar. Runtime state (the SQLite database, backups) lives in
 `data/`. Both are gitignored, as is `config.json` itself.
 
+## Groups
+
+A search can name a `group`. That group becomes one folder above the search,
+which is how a config with many searches stays navigable on disk:
+
+```json
+{
+  "name": "kk-twintails",
+  "url": "https://db.bepis.moe/koikatsu?tags=twintails",
+  "group": "koikatsu"
+}
+```
+
+```
+downloads/
+  koikatsu/                  <- the group
+    kk-twintails/            <- the search
+      Sakura_2026-09-11_08-16-04.png
+      Sakura_2026-09-11_08-16-04.meta.json
+  ungrouped-search/          <- searches without a group are unchanged
+```
+
+The group is optional and changes nothing else: leave it out and files land in
+`downloads/<search name>/` exactly as before. It is also safe to add later -
+Kiroku remembers what it downloaded by search name, not by folder, so putting
+an existing search into a group (or renaming the group) does not re-download
+anything. New files simply start landing in the new folder.
+
 ## Commands
 
 | Command | What it does |
@@ -67,10 +95,17 @@ node tools/config-editor/config.editor.js --open
 - **Left panel - global settings.** Delays, concurrency, retries, database.
   Every field shows the default it falls back to; clearing a field removes
   the key from the file and goes back to that default.
-- **Right side - your searches.** Each search is a card: name, URL,
+- **Right side - your searches.** Each search is a card: name, URL, group,
   skip-downloaded, and its module options. Cards open one at a time, so a
   config with hundreds of searches stays fast.
-- **Filter box** (`Ctrl+F`) matches names, URLs and options. The counter
+- **Groups.** Searches are listed under their group, each with a header
+  showing the folder its files go to. Click a header to collapse the group,
+  drag a card onto another header to move that search into it, and use the
+  header buttons to rename a group everywhere (✎) or remove it from its
+  searches (⊘). **Grouped / Flat** switches between the sectioned list and one
+  plain list. Typing a new group name into a card offers the groups you
+  already use.
+- **Filter box** (`Ctrl+F`) matches names, URLs, groups and options. The counter
   shows totals and warns about duplicate search names - the name is the key
   Kiroku uses for the already-downloaded check, so two searches sharing one
   name share that state.

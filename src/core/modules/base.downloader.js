@@ -169,7 +169,8 @@ export class BaseDownloader {
 
   /**
    * Convenience: resolves where an item should be saved on disk, following
-   * the shared downloads/<searchName>/<item>.<ext> layout. Modules can use
+   * the shared downloads/[<group>/]<searchName>/<item>.<ext> layout - the
+   * group folder appears when the search config names one. Modules can use
    * this in downloadItem() instead of building paths by hand, or ignore it
    * and return their own path — the orchestrator only cares about the
    * returned filePath.
@@ -183,6 +184,7 @@ export class BaseDownloader {
       searchName: this.searchConfig.name,
       itemName: item.title ?? this.getItemId(item),
       extension,
+      group: this.searchConfig.group,
     });
   }
 }
