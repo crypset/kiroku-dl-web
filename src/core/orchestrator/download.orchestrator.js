@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import { resolveModule } from "./module.resolver.js";
 import { print, sleep, ensureDir, saveToJson, retry } from "../../shared/utils.js";
 import { metaPathFor } from "../../shared/download-path.js";
@@ -131,25 +132,54 @@ export class DownloadOrchestrator {
     const concurrency = Math.max(1, this.downloadConfig.maxConcurrent ?? 1);
     const queue = [...items];
 
+    // Batch pre-check already downloaded IDs to avoid per-item database roundtrips
+    const skipDownloaded =
+      this.downloadConfig.skipDownloaded && searchConfig.skipDownloaded !== false;
+    let alreadyDownloadedSet = new Set();
+
+    if (this.databaseEnabled && skipDownloaded) {
+      const itemIds = [];
+      for (const item of items) {
+        try {
+          const id = downloader.getItemId(item);
+          if (id) itemIds.push(id);
+        } catch {
+          // Ignore items whose ID cannot be derived yet
+        }
+      }
+      if (itemIds.length > 0) {
+        alreadyDownloadedSet = await this._findAlreadyDownloadedSet(
+          searchConfig.name,
+          itemIds,
+        );
+      }
+    }
+
     const workers = Array.from({ length: concurrency }, () =>
-      this._worker(downloader, searchConfig, queue),
+      this._worker(downloader, searchConfig, queue, alreadyDownloadedSet),
     );
 
     await Promise.all(workers);
   }
 
-  async _worker(downloader, searchConfig, queue) {
+  async _worker(downloader, searchConfig, queue, alreadyDownloadedSet) {
     while (queue.length > 0 && !this.signal.aborted) {
       const item = queue.shift();
-      await this._downloadOne(downloader, searchConfig, item);
+      const downloaded = await this._downloadOne(
+        downloader,
+        searchConfig,
+        item,
+        alreadyDownloadedSet,
+      );
 
-      if (this.downloadConfig.delay) {
+      // Only sleep delay when an actual download was executed
+      if (downloaded && this.downloadConfig.delay) {
         await sleep(this.downloadConfig.delay);
       }
     }
   }
 
-  async _downloadOne(downloader, searchConfig, item) {
+  async _downloadOne(downloader, searchConfig, item, alreadyDownloadedSet) {
     let itemId;
     try {
       itemId = downloader.getItemId(item);
@@ -159,7 +189,7 @@ export class DownloadOrchestrator {
         "error",
       );
       if (!this.downloadConfig.skipErrors) throw err;
-      return;
+      return false;
     }
 
     // From here on everything - the database lookup included - reports under
@@ -168,9 +198,14 @@ export class DownloadOrchestrator {
       const skipDownloaded =
         this.downloadConfig.skipDownloaded && searchConfig.skipDownloaded !== false;
 
-      if (skipDownloaded && (await this._alreadyDownloaded(searchConfig.name, itemId))) {
+      const isAlreadySaved =
+        skipDownloaded &&
+        (alreadyDownloadedSet?.has(itemId) ||
+          (await this._alreadyDownloaded(searchConfig.name, itemId)));
+
+      if (isAlreadySaved) {
         print(`Skipping already downloaded: ${itemId}`, "info");
-        return;
+        return false;
       }
 
       const filePath = await retry(() => downloader.downloadItem(item), {
@@ -182,9 +217,11 @@ export class DownloadOrchestrator {
       await this._writeMetadata(searchConfig, item, itemId, filePath);
       await this._recordDownload(searchConfig.name, itemId, item, filePath);
       print(`Downloaded: ${itemId}`, "success");
+      return true;
     } catch (err) {
       print(`Failed to download ${itemId}: ${err.message}`, "error");
       if (!this.downloadConfig.skipErrors) throw err;
+      return false;
     }
   }
 
@@ -203,6 +240,23 @@ export class DownloadOrchestrator {
       // they land in this same sidecar instead of a second file next to it.
       metadata: item.metadata ?? null,
     });
+  }
+
+  async _findAlreadyDownloadedSet(searchName, itemIds) {
+    if (!this.databaseEnabled || !itemIds || itemIds.length === 0) return new Set();
+    try {
+      const rows = await DownloadedItem.findAll({
+        where: {
+          searchName,
+          itemId: { [Op.in]: itemIds },
+        },
+        attributes: ["itemId"],
+        raw: true,
+      });
+      return new Set(rows.map((r) => r.itemId));
+    } catch {
+      return new Set();
+    }
   }
 
   async _alreadyDownloaded(searchName, itemId) {

@@ -169,22 +169,24 @@ export class BaseDownloader {
 
   /**
    * Convenience: resolves where an item should be saved on disk, following
-   * the shared downloads/[<group>/]<searchName>/<item>.<ext> layout - the
-   * group folder appears when the search config names one. Modules can use
-   * this in downloadItem() instead of building paths by hand, or ignore it
-   * and return their own path — the orchestrator only cares about the
-   * returned filePath.
+   * the shared downloads/[<group>/]<searchName>/[<subfolder>/]<item>.<ext> layout - the
+   * group folder appears when the search config names one, and subfolder appears
+   * when requested by the caller. Modules can use this in downloadItem() instead
+   * of building paths by hand, or ignore it and return their own path — the orchestrator
+   * only cares about the returned filePath.
    * @param {object} item
    * @param {string} extension - e.g. "mp4", ".jpg"
+   * @param {{ subfolder?: string }} [options]
    * @returns {{ dir: string, filePath: string, metaPath: string }}
    */
-  resolveItemPath(item, extension) {
+  resolveItemPath(item, extension, { subfolder } = {}) {
     return buildItemPath({
       downloadDir: this.appConfig.app?.downloadDir ?? "downloads",
       searchName: this.searchConfig.name,
       itemName: item.title ?? this.getItemId(item),
       extension,
       group: this.searchConfig.group,
+      subfolder,
     });
   }
 }

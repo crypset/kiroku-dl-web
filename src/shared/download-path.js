@@ -8,7 +8,7 @@ import { sanitizeName } from "./utils.js";
  * @param {Date} date
  * @returns {string}
  */
-function formatTimestamp(date) {
+export function formatTimestamp(date) {
   return date
     .toISOString() // "2015-03-25T12:00:00.000Z"
     .replace("T", "_")
@@ -24,6 +24,9 @@ function formatTimestamp(date) {
  * and, when the search declares a `group`, one level deeper:
  *   downloads/<group>/<searchName>/<sanitized item name>_<timestamp>.<ext>
  *
+ * An optional `subfolder` places the file in a subcategory under the search:
+ *   downloads/[<group>/]<searchName>/<subfolder>/<sanitized item name>_<timestamp>.<ext>
+ *
  * The search name is the primary axis, so everything from one source/series
  * ends up together regardless of when it was downloaded; the group is an
  * optional shelf above it for keeping related searches side by side. The
@@ -35,7 +38,7 @@ function formatTimestamp(date) {
  * keyed on the search name, so moving a search into a group does not make
  * Kiroku fetch everything again.
  *
- * @param {{ downloadDir: string, searchName: string, itemName: string, extension: string, group?: string, timestamp?: Date }} opts
+ * @param {{ downloadDir: string, searchName: string, itemName: string, extension: string, group?: string, subfolder?: string, timestamp?: Date }} opts
  * @returns {{ dir: string, filePath: string, metaPath: string }}
  */
 export function buildItemPath({
@@ -44,12 +47,20 @@ export function buildItemPath({
   itemName,
   extension,
   group,
+  subfolder,
   timestamp = new Date(),
 }) {
-  // sanitizeName() strips separators, so a group can only ever add one level -
-  // a value like "../elsewhere" cannot escape the download directory.
+  // sanitizeName() strips separators, so group/subfolder segments can only ever add safe levels -
+  // values like "../elsewhere" cannot escape the download directory.
   const groupSegment = typeof group === "string" && group.trim() ? [sanitizeName(group)] : [];
-  const dir = path.join(downloadDir, ...groupSegment, sanitizeName(searchName));
+  const subfolderSegment =
+    typeof subfolder === "string" && subfolder.trim()
+      ? subfolder
+          .split(/[/\\]+/)
+          .map(sanitizeName)
+          .filter(Boolean)
+      : [];
+  const dir = path.join(downloadDir, ...groupSegment, sanitizeName(searchName), ...subfolderSegment);
   const base = sanitizeName(`${itemName}_${formatTimestamp(timestamp)}`);
   const ext = extension.startsWith(".") ? extension : `.${extension}`;
 

@@ -4,3 +4,6 @@
  */
 
 import "./bepisdb/bepisdb.downloader.js";
+import "./nikke/nikke.downloader.js";
+import "./nikkedb/nikkedb.downloader.js";
+import "./mmdarchive/mmdarchive.downloader.js";

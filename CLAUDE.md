@@ -40,6 +40,16 @@ src/
     bepisdb/
       bepisdb.downloader.js         db.bepis.moe - the reference implementation
       bepisdb.types.js              that site's card-type map, search params, naming rules
+    nikke/
+      nikke.downloader.js           nikke-en.com art gallery & 3D MMD models
+      nikke.types.js                categories (mmd/wallpaper/avatar/live), filters, API headers
+    nikkedb/
+      nikkedb.downloader.js         nikke-db.pages.dev gallery & Live2D Spine visualiser
+      nikkedb.types.js              poses (fb/aim/cover), collections, Spine atlas textures
+      data/                         bundled catalogs (l2d.json, gallery.json)
+    mmdarchive/
+      mmdarchive.downloader.js      mmda.booru.org 3D MMD models & post scraping
+      mmdarchive.types.js           Gelbooru parsers, tstorage agent, cookie loaders
     _template/template.downloader.js   copy this to scaffold a new module
   shared/
     utils.js                        print/banner/sleep/jitter/retry/saveToJson/sanitizeName/base64ToHex

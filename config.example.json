@@ -38,6 +38,49 @@
       "name": "bepisdb-ungrouped",
       "url": "https://db.bepis.moe/kkscenes?orderType=mostRecent",
       "skipDownloaded": true
+    },
+    {
+      "name": "nikke-mmd-models",
+      "url": "https://nikke-en.com/art.html?type=mmd",
+      "group": "nikke",
+      "skipDownloaded": true,
+      "options": {
+        "downloadPreviews": true,
+        "subfolders": true
+      }
+    },
+    {
+      "name": "nikke-wallpapers",
+      "url": "https://nikke-en.com/art.html?type=wallpaper&orientation=horizontal",
+      "group": "nikke",
+      "skipDownloaded": true
+    },
+    {
+      "name": "nikkedb-rapi-l2d",
+      "url": "https://nikke-db.pages.dev/visualiser?character=Rapi",
+      "group": "nikke-db",
+      "skipDownloaded": true
+    },
+    {
+      "name": "nikkedb-album-covers",
+      "url": "https://nikke-db.pages.dev/gallery?collection=albums",
+      "group": "nikke-db",
+      "skipDownloaded": true
+    },
+    {
+      "name": "mmda-genshin-models",
+      "url": "https://mmda.booru.org/index.php?page=post&s=list&tags=genshin_impact",
+      "group": "mmd",
+      "skipDownloaded": true,
+      "options": {
+        "maxPages": 2
+      }
+    },
+    {
+      "name": "mmda-single-model",
+      "url": "https://mmda.booru.org/index.php?page=post&s=view&id=2128",
+      "group": "mmd",
+      "skipDownloaded": true
     }
   ]
 }
